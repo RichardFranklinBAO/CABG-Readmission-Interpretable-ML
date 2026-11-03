@@ -1,0 +1,12 @@
+# Illustrative dependencies for archived Python notebooks.
+# Pin tested versions only after a clean-environment verification.
+numpy
+pandas
+scipy
+scikit-learn
+matplotlib
+seaborn
+jupyter
+shap
+xgboost
+python-docx
