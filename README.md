@@ -30,3 +30,7 @@ The archived scripts include **intermediate and exploratory versions**. The arch
 Please consult [the code review checklist](docs/BEFORE_PUBLICATION.md) before public redistribution.
 
 **Current status:** Repository scaffold for private review. Source scripts will be added only after privacy, rights, and technical review.
+
+## Standalone coding sample (synthetic data)
+
+For an independently runnable example, see [Random Forest + AUROC + permutation importance](examples/synthetic_rf_demo.py) and its [instructions](examples/README.md). This newly prepared example uses entirely synthetic data and is **not** the published analysis or a reproduction of the article's reported results.
