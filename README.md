@@ -1,33 +1,45 @@
-# CABG Readmission — Interpretable Machine Learning
+# Predicting CABG Readmission with Interpretable Machine Learning
 
-**Published research · Independent R/Python computational analysis · Private research-code portfolio**
+**Research code | Python + R | JTCVS Open (2026)**
 
-**Publication:** Manyam R, Bao C, He Y, et al. *Interpretable Machine Learning Risk Model to Predict Readmission After Coronary Artery Bypass Grafting*. *JTCVS Open* (2026). [DOI: 10.1016/j.xjon.2026.102050](https://doi.org/10.1016/j.xjon.2026.102050).
+This repository documents the computational work for *Interpretable Machine Learning Risk Model to Predict Readmission After Coronary Artery Bypass Grafting* ([DOI: 10.1016/j.xjon.2026.102050](https://doi.org/10.1016/j.xjon.2026.102050)).
 
-## Overview
+## Research question
 
-This study investigates 30-day readmission after coronary artery bypass grafting (CABG) using tabular clinical characteristics and interpretable machine-learning methods.
+Can clinical characteristics help identify patients at risk of readmission after CABG, and which variables are most important in an interpretable machine-learning analysis?
 
-**My contribution:** I independently wrote the computational analysis in R and Python, including clinical-data recoding and preparation, missingness handling, statistical comparisons, classifier/model-selection experiments, performance evaluation, SHAP interpretation, and research tables/figures. Faculty collaborators led manuscript writing.
+## My contribution
 
-## Start here: coding sample without patient data
+I independently implemented the computational analysis in Python and R: data preparation and recoding, missingness handling, descriptive comparisons, classifier and feature-selection experiments, performance assessment, SHAP interpretation, and preparation of research tables and figures. Faculty collaborators led the manuscript-writing process.
 
-- [Run the standalone synthetic-data Random Forest example](examples/synthetic_rf_demo.py) ([instructions](examples/README.md)). It demonstrates stratified splitting, five-fold cross-validation, AUROC and permutation importance.
-- This **new educational demonstration** is separate from the CABG analysis; synthetic metrics must **not** be interpreted as the paper's findings.
+## Quick start — standalone example
 
-## Research script map
+The self-contained [synthetic Random Forest demonstration](examples/synthetic_rf_demo.py) does **not** require patient records.
 
-| Stage | File | Purpose |
+```bash
+pip install -r requirements.txt
+python examples/synthetic_rf_demo.py
+```
+
+This example illustrates train/test splitting, cross-validation, AUROC, and permutation feature importance. Its results are **synthetic examples**, not reported paper results.
+
+## Research workflow
+
+| Stage | Research script | Contents |
 |---|---|---|
-| 01 | [Data preparation (R)](analysis/01_data_preprocessing.Rmd) | Clinical variable coding, missingness checks, KNN imputation |
-| 02 | [Descriptive statistics / Table 1 (Python)](analysis/02_baseline_descriptive_table.ipynb) | Baseline statistical comparisons and manuscript table |
-| 03 | [Models and feature selection (Python)](analysis/03_rf_feature_selection.ipynb) | Random Forest, other classifiers, CV and feature selection |
-| 04 | [SHAP and reporting (Python)](analysis/04_model_interpretation_and_reporting.ipynb) | Model interpretation, figures, tables and comparisons |
+| 1 | [Clinical preprocessing (R)](analysis/01_data_preprocessing.Rmd) | Variable coding, missingness checks and KNN imputation |
+| 2 | [Baseline statistical tables](analysis/02_baseline_descriptive_table.ipynb) | Descriptive comparisons and Table 1 |
+| 3 | [Model training and feature selection](analysis/03_rf_feature_selection.ipynb) | Random Forest, classifier comparisons, CV and feature selection |
+| 4 | [Interpretation and reporting](analysis/04_model_interpretation_and_reporting.ipynb) | SHAP, performance plots and manuscript-facing tables |
 
-[Read the analysis instructions](analysis/README.md) · [Original filename map](docs/CODE_MAP.md) · [Privacy and publication checklist](docs/BEFORE_PUBLICATION.md)
+See the [analysis guide](analysis/README.md) and [original-file mapping](docs/CODE_MAP.md) for the archived workflow.
 
-## Reproducibility and scientific limits
+## Data availability and reproducibility
 
-No patient-level datasets, weights or saved notebook execution outputs are included. The archived research scripts retain some original dataset filenames and relative import assumptions; authorized inputs and path adaptation are needed for full execution. The archival notebooks include exploratory versions **not guaranteed to reproduce** the final paper's published results. Neither the code in this repository nor synthetic examples should be represented as a fully verified reproduction of the publication.
+This repository contains research code and a synthetic demonstration, **not patient-level clinical data, model weights or subject-level prediction files**. Original scripts reference restricted study inputs by filename; an authorized copy of those inputs and their original directory assumptions would be needed to run the full pipeline.
 
-The repository is currently **Private** pending institutional/data-owner permission, a complete disclosure review and reproducibility checks. Do not change its visibility until these checks are completed.
+The analysis folder preserves original research and exploratory versions, not a verified one-command reproduction of every final published result. Saved Jupyter output cells and execution counters have been cleared. See [Data and reproducibility notes](docs/DATA_AVAILABILITY.md).
+
+## Citation
+
+Please cite the published article when referring to the clinical study. The synthetic demonstration is separate from the published empirical analysis.
