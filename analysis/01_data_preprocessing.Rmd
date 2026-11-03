@@ -1,0 +1,810 @@
+---
+title: "processing_dataset"
+author: "Conglin BAO"
+date: "2026-01-29"
+output: html_document
+---
+
+
+
+### 了解信息
+```{r qc-verify-variables-row2, message=FALSE, warning=FALSE}
+library(dplyr)
+library(readxl)
+library(purrr)
+library(here)
+
+# --------------------------------------------------
+# project root anchor (your exact setting)
+# --------------------------------------------------
+here::i_am("analysis/01_data_preprocessing.Rmd")
+
+# --------------------------------------------------
+# 1) read data (xlsx) - robust against type-guessing (Tobacco Use 1)
+# --------------------------------------------------
+fp <- here("datasets", "CABG-readmission-cohort-for-jtcvs26.xlsx")
+stopifnot(file.exists(fp))
+
+# Read header across a wide enough range to include all columns (41 cols ~ up to AO)
+hdr <- readxl::read_xlsx(fp, sheet = "in", range = "A1:AO1", .name_repair = "unique")
+cols <- names(hdr)
+
+# Force "Tobacco Use 1" to text so it won't be locked as logical when early rows are empty
+idx_tu1 <- match("Tobacco Use 1", cols)
+stopifnot(!is.na(idx_tu1))
+
+ct <- rep("guess", length(cols))
+ct[idx_tu1] <- "text"
+
+# Read the full data range (buffered)
+dat <- readxl::read_xlsx(
+  fp,
+  sheet = "in",
+  range = "A1:AO9000",
+  col_types = ct,
+  .name_repair = "unique"
+)
+
+cat("Loaded:", fp, "\n")
+cat("Rows:", nrow(dat), " Cols:", ncol(dat), "\n\n")
+
+# --------------------------------------------------
+# helpers
+# --------------------------------------------------
+assert_cols_exist <- function(df, cols, label = "columns") {
+  missing <- setdiff(cols, names(df))
+  if (length(missing) > 0) {
+    cat("Missing ", label, ":\n", sep = "")
+    print(missing)
+    stop("Some required columns are missing. Please check column names.")
+  }
+}
+
+get_uniques <- function(x) sort(unique(x))
+
+# keep only non-missing, non-empty values (useful for Excel columns with big NA blocks)
+clean_vals <- function(x) {
+  x2 <- x[!is.na(x)]
+  if (is.character(x2)) x2 <- x2[x2 != ""]
+  x2
+}
+
+check_binary_01 <- function(x) {
+  u <- clean_vals(x)
+  all(u %in% c(0, 1))
+}
+
+# --------------------------------------------------
+# variable groups (aligned to your exact names(dat))
+# --------------------------------------------------
+race_vars <- c(
+  "Race - White",
+  "Race - Black / African American",
+  "Race - Asian",
+  "Race - American Indian / Alaskan Native",
+  "Race - Native Hawaiian / Pacific Islander",
+  "Race Other"
+)
+
+binary_vars <- c(
+  "Diabetes",
+  "Hypertension",
+  "Endocarditis",
+  "Tobacco Use 2",
+  "Sleep Apnea",
+  "Illicit Drug Use",
+  "Liver Disease",
+  "Immunocompromised",
+  "PAD",
+  "Syncope",
+  "CVD",
+  "Previous  PCI",   # two spaces, matches your data
+  "Prior MI",
+  "Readmission"
+)
+
+need_unique_vars <- c(
+  "Tobacco Use 1",
+  "CLD",
+  "Pneumonia",
+  "Alcohol Use",
+  "Num Dis Vessels",
+  "Status"
+)
+
+gender_var <- "Gender"
+serial_var <- "S_no"
+
+# --------------------------------------------------
+# verify columns exist
+# --------------------------------------------------
+assert_cols_exist(dat, race_vars, "race variables")
+assert_cols_exist(dat, binary_vars, "binary variables")
+assert_cols_exist(dat, need_unique_vars, "unique-value variables")
+assert_cols_exist(dat, gender_var, "gender variable")
+assert_cols_exist(dat, serial_var, "serial variable")
+
+# --------------------------------------------------
+# 1) binary variable check (still tests 0/1 as your original hypothesis)
+# --------------------------------------------------
+cat("1) Binary variable check (expect 0/1 + NA)\n")
+
+bin_report <- tibble(
+  variable = binary_vars,
+  ok_binary_01 = map_lgl(binary_vars, ~ check_binary_01(dat[[.x]])),
+  unique_values = map(binary_vars, ~ get_uniques(clean_vals(dat[[.x]])))
+)
+
+print(bin_report %>% select(variable, ok_binary_01))
+
+bad_bin <- bin_report %>% filter(!ok_binary_01)
+if (nrow(bad_bin) > 0) {
+  cat("\nViolations (not in {0,1}):\n")
+  for (i in seq_len(nrow(bad_bin))) {
+    cat("- ", bad_bin$variable[i], ": ",
+        paste(bad_bin$unique_values[[i]], collapse = ", "),
+        "\n", sep = "")
+  }
+} else {
+  cat("\nAll listed binary variables satisfy {0,1} (plus NA).\n")
+}
+
+cat("\n-----------------------------\n\n")
+
+# --------------------------------------------------
+# 2) unique values for selected variables (robust to big NA blocks)
+# --------------------------------------------------
+cat("2) Unique values for selected variables (non-missing only)\n")
+for (v in need_unique_vars) {
+  x2 <- clean_vals(dat[[v]])
+  cat("- ", v,
+      " (n_unique_nonmissing=", length(unique(x2)), "): ",
+      paste(get_uniques(x2), collapse = ", "),
+      "\n", sep = "")
+}
+
+cat("\n-----------------------------\n\n")
+
+# --------------------------------------------------
+# 3) gender encoding check (male=1, female=0)
+# --------------------------------------------------
+cat("3) Gender encoding check (male=1, female=0)\n")
+
+g_uni <- get_uniques(clean_vals(dat[[gender_var]]))
+cat("Gender unique values:", paste(g_uni, collapse = ", "), "\n")
+
+if (is.numeric(dat[[gender_var]]) || is.integer(dat[[gender_var]])) {
+  ok_gender_01 <- check_binary_01(dat[[gender_var]])
+  cat("Gender in {0,1}:", ok_gender_01, "\n")
+  if (!ok_gender_01) {
+    cat("Gender violates {0,1}. Values:", paste(g_uni, collapse = ", "), "\n")
+  } else {
+    cat("Gender is coded as 0/1. If you also have a text label column, we can cross-check male/female mapping.\n")
+  }
+} else {
+  cat("Gender is non-numeric (likely labels). Values:", paste(g_uni, collapse = ", "), "\n")
+}
+
+cat("\n-----------------------------\n\n")
+
+# --------------------------------------------------
+# 4) remaining variables should be numeric (excluding listed vars + race)
+# --------------------------------------------------
+cat("4) Remaining variables numeric check\n")
+
+excluded <- unique(c(serial_var, binary_vars, need_unique_vars, gender_var, race_vars))
+other_vars <- setdiff(names(dat), excluded)
+
+non_numeric <- tibble(
+  variable = other_vars,
+  class = map_chr(other_vars, ~ paste(class(dat[[.x]]), collapse = "/"))
+) %>%
+  filter(!map_lgl(variable, ~ is.numeric(dat[[.x]]) || is.integer(dat[[.x]])))
+
+if (nrow(non_numeric) == 0) {
+  cat("All remaining variables are numeric/integer as expected.\n")
+} else {
+  cat("Non-numeric variables found (unexpected under your hypothesis):\n")
+  print(non_numeric)
+
+  cat("\nExamples of unique values (first 20 non-missing):\n")
+  for (v in non_numeric$variable) {
+    x2 <- clean_vals(dat[[v]])
+    cat("- ", v, ": ", paste(head(get_uniques(x2), 20), collapse = ", "), "\n", sep = "")
+  }
+}
+
+cat("\nDone.\n")
+
+
+```
+
+### 了解信息
+```{r qc-categorical-distribution, message=FALSE, warning=FALSE}
+library(dplyr)
+library(purrr)
+library(tibble)
+
+# helper: count + percentage for one categorical variable
+tabulate_cat <- function(x, var_name) {
+  x2 <- x[!is.na(x) & x != ""]
+  n_total <- length(x2)
+
+  tibble(
+    variable = var_name,
+    category = names(table(x2)),
+    n = as.integer(table(x2))
+  ) %>%
+    mutate(
+      percent = round(100 * n / n_total, 1)
+    ) %>%
+    arrange(desc(n))
+}
+
+# variables you want to summarize
+cat_vars <- c(
+  "Tobacco Use 1",
+  "CLD",
+  "Pneumonia",
+  "Alcohol Use",
+  "Num Dis Vessels",
+  "Status"
+)
+
+# run for all variables and bind together
+cat_summary <- map_dfr(cat_vars, ~ tabulate_cat(dat[[.x]], .x))
+
+# print nicely
+print(cat_summary, n = Inf)
+
+```
+
+```{r}
+names(dat)
+```
+
+### 了解信息
+```{r}
+library(dplyr)
+library(purrr)
+library(tibble)
+
+# 总行数
+n_total <- nrow(dat)
+
+# 计算每一列的 non-missing percentage
+col_presence <- tibble(
+  variable = names(dat),
+  n_non_missing = map_int(dat, function(x) {
+    if (is.character(x)) {
+      sum(!is.na(x) & x != "")
+    } else {
+      sum(!is.na(x))
+    }
+  }),
+  total_n = n_total
+) %>%
+  mutate(
+    percent_present = round(100 * n_non_missing / total_n, 1)
+  ) %>%
+  arrange(percent_present)
+
+print(col_presence, n = Inf)
+
+```
+
+### 理解信息
+```{r}
+library(dplyr)
+library(purrr)
+library(tibble)
+
+# 需要检查的变量
+check_vars <- c(
+  "Diabetes",
+  "Hypertension",
+  "Endocarditis",
+  "Tobacco Use 2",
+  "Sleep Apnea",
+  "Illicit Drug Use",
+  "Liver Disease",
+  "Immunocompromised",
+  "PAD",
+  "Syncope",
+  "CVD",
+  "Previous  PCI",
+  "Prior MI",
+  "Readmission"
+)
+
+# helper: 对单个变量计算 n 和 percent
+tabulate_binary_cat <- function(x, var_name) {
+  x2 <- x[!is.na(x) & x != ""]
+  n_total <- length(x2)
+
+  tibble(
+    variable = var_name,
+    category = names(table(x2)),
+    n = as.integer(table(x2))
+  ) %>%
+    mutate(
+      percent = round(100 * n / n_total, 1)
+    ) %>%
+    arrange(desc(n))
+}
+
+# 对所有变量批量运行
+binary_cat_summary <- map_dfr(
+  check_vars,
+  ~ tabulate_binary_cat(dat[[.x]], .x)
+)
+
+# 打印全部结果
+print(binary_cat_summary, n = Inf)
+
+```
+
+
+
+
+
+### Data processing
+```{r clean-dataset-row2-final-v5, message=FALSE, warning=FALSE}
+library(dplyr)
+library(readxl)
+library(here)
+library(stringr)
+library(readr)
+
+# --------------------------------------------------
+# project root anchor
+# --------------------------------------------------
+here::i_am("scripts/processing_dataset-v2.Rmd")
+
+# --------------------------------------------------
+# 1) read data (xlsx) - robust against type-guessing
+# --------------------------------------------------
+fp <- here("datasets", "CABG-readmission-cohort-for-jtcvs26.xlsx")
+stopifnot(file.exists(fp))
+
+# header (41 cols ~ up to AO)
+hdr <- readxl::read_xlsx(fp, sheet = "in", range = "A1:AO1", .name_repair = "unique")
+cols <- names(hdr)
+
+idx_tu1 <- match("Tobacco Use 1", cols)
+idx_hgb <- match("Hemoglobin", cols)
+stopifnot(!is.na(idx_tu1), !is.na(idx_hgb))
+
+ct <- rep("guess", length(cols))
+ct[idx_tu1] <- "text"  # Tobacco Use 1 must be text
+ct[idx_hgb] <- "text"  # Hemoglobin sometimes mis-guessed; read as text then parse
+
+dat <- readxl::read_xlsx(
+  fp,
+  sheet = "in",
+  range = "A1:AO9000",
+  col_types = ct,
+  .name_repair = "unique"
+)
+
+cat("Loaded:", fp, "\n")
+cat("Rows:", nrow(dat), " Cols:", ncol(dat), "\n\n")
+
+# --------------------------------------------------
+# helpers
+# --------------------------------------------------
+assert_cols_exist <- function(df, cols, label = "columns") {
+  missing <- setdiff(cols, names(df))
+  if (length(missing) > 0) {
+    cat("Missing ", label, ":\n", sep = "")
+    print(missing)
+    stop("Some required columns are missing. Please check column names.")
+  }
+}
+
+yn01 <- function(x, unknown_to_no = TRUE) {
+  y <- str_to_lower(str_trim(as.character(x)))
+  case_when(
+    y == "yes" ~ 1,
+    y == "no"  ~ 0,
+    y == "unknown" & unknown_to_no ~ 0,
+    y == "unknown" & !unknown_to_no ~ NA_real_,
+    TRUE ~ NA_real_
+  )
+}
+
+tu1_to_01 <- function(x) {
+  t1 <- str_to_lower(str_trim(as.character(x)))
+  case_when(
+    t1 %in% c(
+      "current every day smoker",
+      "current some day smoker",
+      "former smoker",
+      "smoker, current status (frequency) unknown"
+    ) ~ 1,
+    t1 %in% c(
+      "never smoker",
+      "smoking status unknown"
+    ) ~ 0,
+    TRUE ~ NA_real_
+  )
+}
+
+# --------------------------------------------------
+# required columns
+# --------------------------------------------------
+race_cols <- c(
+  "Race - White",
+  "Race - Black / African American",
+  "Race - Asian",
+  "Race - American Indian / Alaskan Native",
+  "Race - Native Hawaiian / Pacific Islander",
+  "Race Other"
+)
+
+need_cols <- c(
+  "S_no",
+  "Gender",
+  "Tobacco Use 1",
+  "Tobacco Use 2",
+  "Diabetes",
+  "Hypertension",
+  "Endocarditis",
+  "Sleep Apnea",
+  "Illicit Drug Use",
+  "Liver Disease",
+  "Immunocompromised",
+  "PAD",
+  "Syncope",
+  "CVD",
+  "Previous  PCI",
+  "Prior MI",
+  "CLD",
+  "Pneumonia",
+  "Alcohol Use",
+  "Num Dis Vessels",
+  "Status",
+  race_cols
+)
+
+assert_cols_exist(dat, need_cols, "required columns")
+
+# --------------------------------------------------
+# 2) recode variables + create tobacco_use + race
+# --------------------------------------------------
+dat_clean <- dat %>%
+  mutate(
+    # -------------------------
+    # Gender: male=1, female=0
+    # -------------------------
+    Gender = case_when(
+      str_to_lower(str_trim(as.character(Gender))) == "male"   ~ 1,
+      str_to_lower(str_trim(as.character(Gender))) == "female" ~ 0,
+      TRUE ~ NA_real_
+    ),
+
+    # -------------------------
+    # Binary vars (Yes=1, No=0; Unknown -> No)
+    # -------------------------
+    Diabetes = yn01(Diabetes, unknown_to_no = TRUE),
+    Hypertension = yn01(Hypertension, unknown_to_no = TRUE),
+    Endocarditis = yn01(Endocarditis, unknown_to_no = TRUE),
+    `Sleep Apnea` = yn01(`Sleep Apnea`, unknown_to_no = TRUE),
+    `Liver Disease` = yn01(`Liver Disease`, unknown_to_no = TRUE),
+    Immunocompromised = yn01(Immunocompromised, unknown_to_no = TRUE),
+    PAD = yn01(PAD, unknown_to_no = TRUE),
+    Syncope = yn01(Syncope, unknown_to_no = TRUE),
+    CVD = yn01(CVD, unknown_to_no = TRUE),
+    `Previous  PCI` = yn01(`Previous  PCI`, unknown_to_no = TRUE),
+    `Prior MI` = yn01(`Prior MI`, unknown_to_no = TRUE),
+
+    # Tobacco Use 2 is already Yes/No -> 1/0
+    `Tobacco Use 2` = yn01(`Tobacco Use 2`, unknown_to_no = TRUE),
+
+    # Illicit Drug Use: Remote/Recent/Yes -> 1 ; No/Unknown -> 0
+    `Illicit Drug Use` = {
+      z <- str_to_lower(str_trim(as.character(`Illicit Drug Use`)))
+      case_when(
+        z %in% c("yes", "remote", "recent") ~ 1,
+        z %in% c("no", "unknown") ~ 0,
+        TRUE ~ NA_real_
+      )
+    },
+
+    # -------------------------
+    # tobacco_use (final):
+    # - If Tobacco Use 2 exists (0/1), use it
+    # - Else if Tobacco Use 1 can be mapped, use it
+    # - Else NA
+    # -------------------------
+    tobacco_use = coalesce(`Tobacco Use 2`, tu1_to_01(`Tobacco Use 1`)),
+
+    # -------------------------
+    # CLD (ordinal): No=0, Mild=1, Moderate=2, Severe=3, Unknown=NA
+    # includes: "Lung disease documented, severity unknown" -> NA
+    # -------------------------
+    CLD = {
+      c1 <- str_to_lower(str_trim(as.character(CLD)))
+      case_when(
+        c1 == "no" ~ 0,
+        c1 == "mild" ~ 1,
+        c1 == "moderate" ~ 2,
+        c1 == "severe" ~ 3,
+        c1 %in% c("unknown", "lung disease documented, severity unknown") ~ NA_real_,
+        TRUE ~ NA_real_
+      )
+    },
+
+    # -------------------------
+    # Pneumonia (binary): No=0, Remote/Recent=1, Unknown=NA
+    # -------------------------
+    Pneumonia = {
+      p1 <- str_to_lower(str_trim(as.character(Pneumonia)))
+      case_when(
+        p1 == "no" ~ 0,
+        p1 %in% c("remote", "recent") ~ 1,
+        p1 == "unknown" ~ NA_real_,
+        TRUE ~ NA_real_
+      )
+    },
+
+    # -------------------------
+    # Alcohol Use (ordinal): None=0, <=1=1, 2-7=2, >=8=3, Unknown=NA
+    # -------------------------
+    `Alcohol Use` = {
+      a1 <- str_to_lower(str_trim(as.character(`Alcohol Use`)))
+      case_when(
+        a1 == "none" ~ 0,
+        a1 == "<= 1 drink/week" ~ 1,
+        a1 == "2-7 drinks/week" ~ 2,
+        a1 == ">= 8 drinks/week" ~ 3,
+        a1 == "unknown" ~ NA_real_,
+        TRUE ~ NA_real_
+      )
+    },
+
+    # -------------------------
+    # Num Dis Vessels (ordinal): None=0, One=1, Two=2, Three=3
+    # -------------------------
+    `Num Dis Vessels` = {
+      n1 <- str_to_lower(str_trim(as.character(`Num Dis Vessels`)))
+      case_when(
+        n1 == "none" ~ 0,
+        n1 == "one" ~ 1,
+        n1 == "two" ~ 2,
+        n1 == "three" ~ 3,
+        TRUE ~ NA_real_
+      )
+    },
+
+    # -------------------------
+    # Status (binary): Elective=0, Urgent=1
+    # -------------------------
+    Status = {
+      s1 <- str_to_lower(str_trim(as.character(Status)))
+      case_when(
+        s1 == "elective" ~ 0,
+        s1 == "urgent" ~ 1,
+        TRUE ~ NA_real_
+      )
+    },
+
+    # -------------------------
+    # Race merged: 1 White, 2 Black, 3 Asian, 4 Other (AI/AN + NH/PI + Race Other)
+    # priority 1->2->3->4
+    # -------------------------
+    race = {
+      r_white <- str_to_lower(str_trim(as.character(`Race - White`))) == "yes"
+      r_black <- str_to_lower(str_trim(as.character(`Race - Black / African American`))) == "yes"
+      r_asian <- str_to_lower(str_trim(as.character(`Race - Asian`))) == "yes"
+      r_ai_an <- str_to_lower(str_trim(as.character(`Race - American Indian / Alaskan Native`))) == "yes"
+      r_nh_pi <- str_to_lower(str_trim(as.character(`Race - Native Hawaiian / Pacific Islander`))) == "yes"
+      r_other <- str_to_lower(str_trim(as.character(`Race Other`))) == "yes"
+      other_flag <- r_ai_an | r_nh_pi | r_other
+
+      case_when(
+        r_white ~ 1,
+        r_black ~ 2,
+        r_asian ~ 3,
+        other_flag ~ 4,
+        TRUE ~ NA_real_
+      )
+    },
+
+    # -------------------------
+    # Hemoglobin: try to parse numeric; keep NA if not parseable
+    # (if the column is truly numeric in Excel, this will still work)
+    # -------------------------
+    Hemoglobin = suppressWarnings(readr::parse_number(as.character(Hemoglobin)))
+  ) %>%
+  # --------------------------------------------------
+  # 3) drop original race columns + Tobacco Use 1/2
+  # --------------------------------------------------
+  select(
+    -all_of(race_cols),
+    -`Tobacco Use 1`,
+    -`Tobacco Use 2`
+  )
+
+# --------------------------------------------------
+# 4) QC prints
+# --------------------------------------------------
+cat("QC: binary vars should be 0/1/NA\n")
+qc_bin <- c(
+  "Diabetes","Hypertension","Endocarditis","Sleep Apnea","Illicit Drug Use",
+  "Liver Disease","Immunocompromised","PAD","Syncope","CVD","Previous  PCI","Prior MI",
+  "tobacco_use"
+)
+for (v in qc_bin) {
+  cat("\n", v, ":\n", sep = "")
+  print(table(dat_clean[[v]], useNA = "ifany"))
+}
+
+cat("\nQC: CLD (0/1/2/3/NA)\n")
+print(table(dat_clean$CLD, useNA = "ifany"))
+
+cat("\nQC: Pneumonia (0/1/NA)\n")
+print(table(dat_clean$Pneumonia, useNA = "ifany"))
+
+cat("\nQC: Alcohol Use (0/1/2/3/NA)\n")
+print(table(dat_clean$`Alcohol Use`, useNA = "ifany"))
+
+cat("\nQC: Num Dis Vessels (0/1/2/3/NA)\n")
+print(table(dat_clean$`Num Dis Vessels`, useNA = "ifany"))
+
+cat("\nQC: Status (0/1/NA)\n")
+print(table(dat_clean$Status, useNA = "ifany"))
+
+cat("\nQC: race (1/2/3/4/NA)\n")
+print(table(dat_clean$race, useNA = "ifany"))
+
+cat("\nQC: Hemoglobin summary\n")
+print(summary(dat_clean$Hemoglobin))
+
+
+
+
+```
+
+
+```{r qc-readmission-and-nonmissing-rate, message=FALSE, warning=FALSE}
+
+stopifnot(exists("dat_clean"))
+
+# --------------------------------------------------
+# 1) Readmission: Yes=1, No=0  (robust to case/space)
+# --------------------------------------------------
+stopifnot("Readmission" %in% names(dat_clean))
+
+dat_clean <- dat_clean %>%
+  mutate(
+    Readmission = case_when(
+      str_to_lower(str_trim(as.character(Readmission))) == "yes" ~ 1,
+      str_to_lower(str_trim(as.character(Readmission))) == "no"  ~ 0,
+      TRUE ~ NA_real_
+    )
+  )
+
+# quick QC
+cat("QC: Readmission (0/1/NA)\n")
+print(table(dat_clean$Readmission, useNA = "ifany"))
+cat("\n")
+
+# --------------------------------------------------
+# 2) For ALL columns: non-missing share = (# rows with value) / (total rows)
+# - For character: "" also treated as missing
+# - For numeric/logical: only NA treated as missing
+# --------------------------------------------------
+n_total <- nrow(dat_clean)
+
+nonmissing_report <- tibble(
+  column = names(dat_clean),
+  n_total = n_total,
+  n_nonmissing = vapply(dat_clean, function(x) {
+    if (is.character(x)) sum(!is.na(x) & str_trim(x) != "")
+    else sum(!is.na(x))
+  }, numeric(1)),
+  pct_nonmissing = round(100 * n_nonmissing / n_total, 1)
+) %>%
+  arrange(pct_nonmissing)
+
+cat("Non-missing rate for each column (sorted):\n")
+print(nonmissing_report, n = Inf)
+cat("\n")
+
+```
+
+```{r drop-two-cols-and-knn-impute-silent-save, message=FALSE, warning=FALSE}
+library(dplyr)
+library(VIM)
+library(here)
+library(readr)
+
+# --------------------------------------------------
+# Assumption: dat_clean already exists
+# --------------------------------------------------
+stopifnot(exists("dat_clean"))
+
+# --------------------------------------------------
+# 0) Drop the 2 columns you specified
+# --------------------------------------------------
+cols_drop_manual <- c("Previous  PCI", "Hemoglobin")
+missing_drop <- setdiff(cols_drop_manual, names(dat_clean))
+if (length(missing_drop) > 0) {
+  stop("These columns are not found in dat_clean: ", paste(missing_drop, collapse = ", "))
+}
+
+dat_drop <- dat_clean %>% select(-all_of(cols_drop_manual))
+
+# --------------------------------------------------
+# 1) Missing-rate based dropping (>=10% drop)  [NO printing]
+# --------------------------------------------------
+missing_rate <- colMeans(is.na(dat_drop))
+cols_to_drop_by_missing <- names(missing_rate[missing_rate >= 0.10])
+dat_kept <- dat_drop %>% select(-any_of(cols_to_drop_by_missing))
+
+# --------------------------------------------------
+# 2) KNN imputation (same as before) + keep output minimal
+# --------------------------------------------------
+char_cols <- names(dat_kept)[vapply(dat_kept, is.character, logical(1))]
+if (length(char_cols) > 0) {
+  dat_kept <- dat_kept %>% mutate(across(all_of(char_cols), as.factor))
+}
+
+dat_clean_imputed <- VIM::kNN(dat_kept, k = 5, imp_var = FALSE)
+
+cat("KNN imputation complete!\n")
+
+# optional: safety check (silent)
+if (anyNA(dat_clean_imputed)) {
+  warning("There are still missing values after kNN imputation.")
+}
+
+# --------------------------------------------------
+# 3) Save results to outcomes/s1
+# --------------------------------------------------
+here::i_am("scripts/processing_dataset-v2.Rmd")
+
+out_fp <- here("outcomes", "s1", "cleaned_dataset_row2_imputed.csv")
+readr::write_csv(dat_clean_imputed, out_fp)
+
+cat("Saved imputed dataset to:\n", out_fp, "\n", sep = "")
+
+```
+### 上面已经完成 processing data 的过程，下面要做的是检查一下。
+
+
+```{r column-completeness-check, message=FALSE, warning=FALSE}
+library(dplyr)
+library(readr)
+library(here)
+library(tibble)
+
+# --------------------------------------------------
+# 1) Read imputed dataset
+# --------------------------------------------------
+here::i_am("scripts/processing_dataset-v2.Rmd")
+
+in_fp <- here("outcomes", "s1", "cleaned_dataset_row2_imputed.csv")
+dat_imp <- readr::read_csv(in_fp, show_col_types = FALSE)
+
+n_total <- nrow(dat_imp)
+
+# --------------------------------------------------
+# 2) Compute non-missing ratio for each column
+# --------------------------------------------------
+completeness_tbl <- tibble(
+  variable        = names(dat_imp),
+  non_missing_n   = colSums(!is.na(dat_imp)),
+  total_n         = n_total,
+  non_missing_pct = round(non_missing_n / total_n * 100, 2)
+) %>%
+  arrange(non_missing_pct)
+
+# --------------------------------------------------
+# 3) Output (clean, no noise)
+# --------------------------------------------------
+completeness_tbl
+names(dat_imp)
+```
+
