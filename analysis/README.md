@@ -1,7 +1,14 @@
-# Original research scripts (review archive)
+# CABG research analysis code
 
-Read the files in order: `01` R data preparation; `02` Table 1; `03` model comparison and feature-selection experiments; `04` SHAP and research tables/figures.
+The scripts follow the archived project workflow:
 
-The code is preserved for research-code review, **not** claimed as a stand-alone reproduction of published results. Original clinical inputs and saved notebook outputs are excluded. The source notebooks contain exploratory experiment versions and need authorized data and local-path configuration to run.
+1. [01 — R preprocessing](01_data_preprocessing.Rmd): clean variables, missingness and KNN imputation.
+2. [02 — Baseline table](02_baseline_descriptive_table.ipynb): compare readmission subgroups and produce Table 1.
+3. [03 — Model experiments](03_rf_feature_selection.ipynb): compare classifiers, cross-validation, and feature-selection procedures.
+4. [04 — Explanation and reporting](04_model_interpretation_and_reporting.ipynb): SHAP and manuscript-facing figures/tables.
 
-The original source filenames are documented in [the code map](../docs/CODE_MAP.md).
+**Read this first:** The notebooks' outputs were cleared before committing. They are an archive of exploratory work, not a turnkey run or a guaranteed exact replication of the final paper. Real clinical data are not distributed. For a fully runnable example requiring no restricted data, use [the synthetic coding sample](../examples/synthetic_rf_demo.py).
+
+## Source provenance
+
+The four source scripts were uploaded from the user's CABG research archive and renamed in sequential order. The R notebook's project-root marker was updated to match its new folder path. Original file names are mapped in [CODE_MAP.md](../docs/CODE_MAP.md). Algorithmic decision steps were not silently rewritten for publication.
