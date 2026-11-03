@@ -1,0 +1,32 @@
+# Research data, derived subject-level outputs, and model artifacts
+data/
+inputs/
+outputs/
+results/
+*.csv
+*.tsv
+*.xlsx
+*.xls
+*.parquet
+*.feather
+*.pkl
+*.pickle
+*.rds
+*.RData
+*.pth
+*.pt
+*.zip
+
+# Local environment, secrets, and execution traces
+.env
+.env.*
+*.pem
+*.key
+.ipynb_checkpoints/
+__pycache__/
+*.pyc
+.Rhistory
+.Rproj.user/
+.DS_Store
+.venv/
+venv/
