@@ -7,7 +7,7 @@ output: html_document
 
 
 
-### 了解信息
+### Inspect the data
 ```{r qc-verify-variables-row2, message=FALSE, warning=FALSE}
 library(dplyr)
 library(readxl)
@@ -219,7 +219,7 @@ cat("\nDone.\n")
 
 ```
 
-### 了解信息
+### Inspect the data
 ```{r qc-categorical-distribution, message=FALSE, warning=FALSE}
 library(dplyr)
 library(purrr)
@@ -263,16 +263,16 @@ print(cat_summary, n = Inf)
 names(dat)
 ```
 
-### 了解信息
+### Inspect the data
 ```{r}
 library(dplyr)
 library(purrr)
 library(tibble)
 
-# 总行数
+# Total number of rows
 n_total <- nrow(dat)
 
-# 计算每一列的 non-missing percentage
+# Calculate the percentage of non-missing values for each column
 col_presence <- tibble(
   variable = names(dat),
   n_non_missing = map_int(dat, function(x) {
@@ -293,13 +293,13 @@ print(col_presence, n = Inf)
 
 ```
 
-### 理解信息
+### Understand the data
 ```{r}
 library(dplyr)
 library(purrr)
 library(tibble)
 
-# 需要检查的变量
+# Variables to check
 check_vars <- c(
   "Diabetes",
   "Hypertension",
@@ -317,7 +317,7 @@ check_vars <- c(
   "Readmission"
 )
 
-# helper: 对单个变量计算 n 和 percent
+# Helper: calculate counts and percentages for one variable
 tabulate_binary_cat <- function(x, var_name) {
   x2 <- x[!is.na(x) & x != ""]
   n_total <- length(x2)
@@ -333,13 +333,13 @@ tabulate_binary_cat <- function(x, var_name) {
     arrange(desc(n))
 }
 
-# 对所有变量批量运行
+# Apply the helper to all variables
 binary_cat_summary <- map_dfr(
   check_vars,
   ~ tabulate_binary_cat(dat[[.x]], .x)
 )
 
-# 打印全部结果
+# Print all results
 print(binary_cat_summary, n = Inf)
 
 ```
@@ -771,7 +771,7 @@ readr::write_csv(dat_clean_imputed, out_fp)
 cat("Saved imputed dataset to:\n", out_fp, "\n", sep = "")
 
 ```
-### 上面已经完成 processing data 的过程，下面要做的是检查一下。
+### Data preprocessing is complete above; the following section performs validation checks.
 
 
 ```{r column-completeness-check, message=FALSE, warning=FALSE}
